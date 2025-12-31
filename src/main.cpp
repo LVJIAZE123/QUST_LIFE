@@ -237,7 +237,7 @@ void ShowStatus(const Person& role) {
     std::cout << "姓名: " << role.name << "\n";
     std::cout << "学识: " << role.knowledge << "  健康: " << role.health << "  精力: " << role.energy
               << "  心情: " << role.mood << "  金钱: " << role.money << "\n";
-    std::cout << "当前计划: " << role.planName << " | 连续学习日: " << role.studyStreak << " 天\n";
+    std::cout << "当前城市: 青岛  | 当前计划: " << role.planName << " | 连续学习日: " << role.studyStreak << " 天\n";
     // 课程状态在外层调用时输出
     std::cout << "-----------------------------\n";
 }
@@ -556,6 +556,7 @@ void RunWeekend(Person& role, std::vector<Item>& bag, const std::vector<Item>& s
     std::cout << "3. 兼职冲刺（金钱+260 精力-20 心情-6 健康-3）\n";
     std::cout << "4. 团建旅行（心情+26 健康+10 金钱-150，获得3天心情保护）\n";
     std::cout << "5. 周末逛店（直接进入小卖部）\n";
+    std::cout << "6. 崂山徒步（健康+22 心情+16 精力-12，获得1天学习增益）\n";
     std::cout << "请选择：";
     const int choice = SafeReadInt();
     switch (choice) {
@@ -584,6 +585,13 @@ void RunWeekend(Person& role, std::vector<Item>& bag, const std::vector<Item>& s
         break;
     case 5:
         EnterShop(role, bag, shopItems);
+        break;
+    case 6:
+        AddHealth(role, 22);
+        AddMood(role, 16);
+        role.energy -= 12;
+        role.studyBoostDays += 1;
+        std::cout << "崂山徒步呼吸山海空气，灵感闪现。\n";
         break;
     default:
         std::cout << "你决定宅在宿舍，什么也没做。\n";
@@ -714,6 +722,43 @@ int main() {
              AddKnowledge(p, 100);
              AddMood(p, 10);
          }},
+        {"室友喊你去五四广场看灯光秀，一路吹海风。心情+14，精力+4。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMood(p, 14);
+             p.energy += 4;
+         }},
+        {"黄岛亲海跑步，海风咸咸的，肺部舒畅。健康+12，心情+8，精力-4。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddHealth(p, 12);
+             AddMood(p, 8);
+             p.energy -= 4;
+         }},
+        {"青岛啤酒节兼职拉啤酒，赚到不少外快。金钱+220，精力-14，心情+6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMoney(p, 220);
+             p.energy -= 14;
+             AddMood(p, 6);
+         }},
+        {"老师带队去八大关采风，拍照画画收获满满。心情+12，学识+6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMood(p, 12);
+             AddKnowledge(p, 6);
+         }},
+        {"与同学去台东夜市撸串，吃到海鲜烤鱿鱼。心情+10，金钱-40。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMood(p, 10);
+             AddMoney(p, -40);
+         }},
+        {"崂山脚下偶遇山泉水摊贩，喝完感觉体力恢复。健康+6，精力+10。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddHealth(p, 6);
+             p.energy += 10;
+         }},
+        {"栈桥看日落走神，作业忘交被老师点名。学识-8，心情-6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddKnowledge(p, -8);
+             AddMood(p, -6);
+         }},
         {"上班时间摸鱼打游戏被军哥发现，军哥说：“没事儿你先玩！”，你羞愧不已，默默关掉了手机。",
          [](const Person&) { return true; }, [](Person& p) { AddMood(p, -2); }},
         {"向英子请教学术问题，耗时一上午，她说：“你回去再研究研究，研究明白了给我讲讲；还有个表格辛苦你加加班”，心情-20。",
@@ -751,6 +796,17 @@ int main() {
          [](Person& p) {
              p.health -= 18;
              p.energy -= 8;
+         }},
+        {"海大联谊活动邀请你做志愿者，心情+10，学识+6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMood(p, 10);
+             AddKnowledge(p, 6);
+         }},
+        {"学校组织参观青岛国际啤酒博物馆，学识+8，心情+12，金钱-30。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddKnowledge(p, 8);
+             AddMood(p, 12);
+             AddMoney(p, -30);
          }},
         {"参加校级比赛获奖，学识+20，心情+16。", [](const Person& p) { return p.knowledge > 120; },
          [](Person& p) {
@@ -801,6 +857,11 @@ int main() {
              p.energy -= 7;
              AddMood(p, 4);
          }},
+        {"海边夜跑", "海风加持，健康+10，心情+10，精力-6", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
+             AddHealth(p, 10);
+             AddMood(p, 10);
+             p.energy -= 6;
+         }},
         {"社交放松", "心情+15，金钱-20，精力+4", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
              AddMood(p, 15);
              AddMoney(p, -20);
@@ -823,6 +884,11 @@ int main() {
              AddHealth(p, 8);
              AddMoney(p, -10);
              AddMood(p, 3);
+         }},
+        {"海鲜市场采购", "学习砍价，心情+6，金钱-30，学识+4", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
+             AddMood(p, 6);
+             AddMoney(p, -30);
+             AddKnowledge(p, 4);
          }},
         {"校园探索", "随机发现物资/灵感/好友", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
              int r = RandomInt(1, 4);
