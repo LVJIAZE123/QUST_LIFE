@@ -51,6 +51,9 @@ std::mt19937& Rng() {
     return engine;
 }
 
+int SafeReadInt();
+void ClampCoreStats(Person& role);
+
 int RandomInt(int min, int max) {
     std::uniform_int_distribution<int> dist(min, max);
     return dist(Rng());
@@ -58,6 +61,82 @@ int RandomInt(int min, int max) {
 
 void PauseShort() {
     std::this_thread::sleep_for(std::chrono::milliseconds(160));
+}
+
+// 中文注释：难度设定，影响每日衰减与初始资源
+void ChooseDifficulty(Person& role) {
+    std::cout << "请选择难度：\n1. 轻松（初始资源高，日常消耗低）\n2. 平衡（默认）\n3. 压力（资源少，消耗高，成就获取更快）\n";
+    int choice = SafeReadInt();
+    if (choice == 1) {
+        role.energy += 10;
+        role.health += 10;
+        role.money += 200;
+        role.energyDecay = 4;
+        role.moodDecay = 1;
+        role.planName = "轻松模式";
+    } else if (choice == 3) {
+        role.energy -= 10;
+        role.health -= 8;
+        role.money -= 100;
+        role.energyDecay = 7;
+        role.moodDecay = 3;
+        role.planName = "压力模式";
+    } else {
+        role.planName = "平衡模式";
+        role.energyDecay = 5;
+        role.moodDecay = 2;
+    }
+    ClampCoreStats(role);
+}
+
+// 中文注释：每日计划选择，决定当天资源倾斜方向
+void ChooseDailyPlan(Person& role) {
+    std::cout << "\n为今天定个计划：\n";
+    std::cout << "1. 学霸模式（学识收益+25%，心情正向-5%，额外消耗精力2）\n";
+    std::cout << "2. 养生模式（健康收益+20%，心情收益+10%，娱乐花费-10%）\n";
+    std::cout << "3. 财富模式（金币收益+20%，学识收益-10%，额外消耗精力1）\n";
+    std::cout << "4. 心情模式（心情收益+25%，负面心情减半）\n";
+    std::cout << "5. 自由发挥（无额外修正）\n";
+    std::cout << "请选择：";
+    int choice = SafeReadInt();
+    role.studyFactor = 1.0;
+    role.healthFactor = 1.0;
+    role.moodFactor = 1.0;
+    role.moneyFactor = 1.0;
+    role.planName = "自由日常";
+    int extraEnergy = 0;
+    switch (choice) {
+    case 1:
+        role.studyFactor = 1.25;
+        role.moodFactor = 0.95;
+        role.planName = "学霸模式";
+        extraEnergy = 2;
+        break;
+    case 2:
+        role.healthFactor = 1.2;
+        role.moodFactor = 1.1;
+        role.moneyFactor = 0.9;
+        role.planName = "养生模式";
+        break;
+    case 3:
+        role.moneyFactor = 1.2;
+        role.studyFactor = 0.9;
+        role.planName = "财富模式";
+        extraEnergy = 1;
+        break;
+    case 4:
+        role.moodFactor = 1.25;
+        role.moodGuardDays += 1;
+        role.planName = "心情模式";
+        break;
+    default:
+        break;
+    }
+    if (extraEnergy > 0) {
+        role.energy -= extraEnergy;
+    }
+    role.studiedToday = false;
+    ClampCoreStats(role);
 }
 
 // 中文注释：安全的数值加减，避免心情保护或溢出问题
@@ -68,17 +147,37 @@ void AddMood(Person& role, int delta) {
         realDelta = delta / 2;
         role.moodGuardDays--;
     }
+    if (realDelta > 0) {
+        realDelta = static_cast<int>(std::round(realDelta * role.moodFactor));
+    }
     role.mood += realDelta;
 }
 
 void AddKnowledge(Person& role, int baseDelta, int extraEnergyCost = 0) {
-    int delta = baseDelta;
+    int delta = static_cast<int>(std::round(baseDelta * role.studyFactor));
     if (role.studyBoostDays > 0) {
         delta += 6;
         role.studyBoostDays--;
     }
     role.knowledge += delta;
     role.energy -= extraEnergyCost;
+    role.studiedToday = true;
+}
+
+void AddHealth(Person& role, int delta) {
+    int realDelta = delta;
+    if (delta > 0) {
+        realDelta = static_cast<int>(std::round(delta * role.healthFactor));
+    }
+    role.health += realDelta;
+}
+
+void AddMoney(Person& role, int delta) {
+    int realDelta = delta;
+    if (delta > 0) {
+        realDelta = static_cast<int>(std::round(delta * role.moneyFactor));
+    }
+    role.money += realDelta;
 }
 
 int SafeReadInt() {
@@ -109,6 +208,8 @@ void ShowStatus(const Person& role) {
     std::cout << "姓名: " << role.name << "\n";
     std::cout << "学识: " << role.knowledge << "  健康: " << role.health << "  精力: " << role.energy
               << "  心情: " << role.mood << "  金钱: " << role.money << "\n";
+    std::cout << "当前城市: 青岛  | 当前计划: " << role.planName << " | 连续学习日: " << role.studyStreak << " 天\n";
+    // 课程状态在外层调用时输出
     std::cout << "-----------------------------\n";
 }
 
@@ -146,6 +247,61 @@ void ShowAchievements(const std::vector<std::string>& achievements) {
     for (const auto& a : achievements) {
         std::cout << "- " << a << "\n";
     }
+}
+
+// 中文注释：课程系统，提供长期目标
+void InitCourses(std::vector<Course>& courses) {
+    courses.push_back({"高级算法", 0, 100, false});
+    courses.push_back({"工程实践", 0, 90, false});
+    courses.push_back({"科研写作", 0, 80, false});
+}
+
+void ShowCourseStatus(const std::vector<Course>& courses) {
+    std::cout << "课程进度：";
+    for (const auto& c : courses) {
+        std::cout << "[" << c.name << " " << c.progress << "%";
+        if (c.finished) std::cout << " 已结课";
+        std::cout << "] ";
+    }
+    std::cout << "\n";
+}
+
+void CheckCourseCompletion(Person& role, Course& c) {
+    if (!c.finished && c.progress >= c.difficulty) {
+        c.finished = true;
+        std::cout << c.name << " 结课！学识+30，心情+10，金钱+80。\n";
+        AddKnowledge(role, 30);
+        AddMood(role, 10);
+        AddMoney(role, 80);
+    }
+}
+
+void AttendCourse(Person& role, std::vector<Course>& courses, int effort = 12) {
+    auto it = std::find_if(courses.begin(), courses.end(), [](const Course& c) { return !c.finished; });
+    if (it == courses.end()) {
+        std::cout << "所有课程已结课，去放松一下吧。\n";
+        AddMood(role, 4);
+        return;
+    }
+    std::cout << "参加课程：" << it->name << "，提升知识同时推进结课进度。\n";
+    AddKnowledge(role, 10);
+    AddMood(role, -1);
+    role.energy -= 5;
+    it->progress = std::min(100, it->progress + effort);
+    CheckCourseCompletion(role, *it);
+    ClampCoreStats(role);
+}
+
+// 中文注释：每日必修课，作为额外成长来源
+void RunDailyLecture(Person& role, std::vector<Course>& courses) {
+    auto it = std::find_if(courses.begin(), courses.end(), [](const Course& c) { return !c.finished; });
+    if (it == courses.end()) return;
+    std::cout << "你参加了一节必修课（" << it->name << "），学识+8，精力-4，进度+10。\n";
+    AddKnowledge(role, 8);
+    role.energy -= 4;
+    it->progress = std::min(100, it->progress + 10);
+    CheckCourseCompletion(role, *it);
+    ClampCoreStats(role);
 }
 
 void UseItem(Person& role, std::vector<Item>& bag) {
@@ -212,6 +368,17 @@ void CheckDailyDecay(Person& role) {
     ClampCoreStats(role);
 }
 
+// 中文注释：低精力强制休整，避免连续学习直接游戏结束
+void EnforceRestIfNeeded(Person& role) {
+    if (role.energy < -10) {
+        std::cout << "你已极度疲劳，被迫停下休息。精力+24，心情-4，健康-1。\n";
+        role.energy += 24;
+        AddMood(role, -4);
+        role.health -= 1;
+    }
+    ClampCoreStats(role);
+}
+
 void CheckEnding(Person& role, const std::vector<std::string>& achievements) {
     if (!role.keepPlaying) return;
 
@@ -225,7 +392,7 @@ void CheckEnding(Person& role, const std::vector<std::string>& achievements) {
         role.keepPlaying = false;
         return;
     }
-    if (role.energy <= -40) {
+    if (role.energy <= -80) {
         std::cout << "过度劳累让你无力继续。结局：被迫退学。\n";
         role.keepPlaying = false;
         return;
@@ -302,11 +469,11 @@ void PlayTask(Person& role) {
         std::cout << "3. 缺席（心情-2）\n";
         const int c = SafeReadInt();
         if (c == 1) {
-            role.health += 25;
+            AddHealth(role, 25);
             role.energy -= 12;
             AddMood(role, 3);
         } else if (c == 2) {
-            role.health += 12;
+            AddHealth(role, 12);
             role.energy -= 6;
             AddMood(role, 8);
         } else {
@@ -337,12 +504,12 @@ void PlayTask(Person& role) {
         std::cout << "3. 放弃班次（无变化）\n";
         const int c = SafeReadInt();
         if (c == 1) {
-            role.money += 160;
+            AddMoney(role, 160);
             role.energy -= 16;
             AddMood(role, -6);
             role.health -= 2;
         } else if (c == 2) {
-            role.money += 90;
+            AddMoney(role, 90);
             role.energy -= 9;
             AddMood(role, -2);
         } else {
@@ -360,11 +527,12 @@ void RunWeekend(Person& role, std::vector<Item>& bag, const std::vector<Item>& s
     std::cout << "3. 兼职冲刺（金钱+260 精力-20 心情-6 健康-3）\n";
     std::cout << "4. 团建旅行（心情+26 健康+10 金钱-150，获得3天心情保护）\n";
     std::cout << "5. 周末逛店（直接进入小卖部）\n";
+    std::cout << "6. 崂山徒步（健康+22 心情+16 精力-12，获得1天学习增益）\n";
     std::cout << "请选择：";
     const int choice = SafeReadInt();
     switch (choice) {
     case 1:
-        role.health += 15;
+        AddHealth(role, 15);
         role.energy += 22;
         AddMood(role, 12);
         break;
@@ -375,19 +543,26 @@ void RunWeekend(Person& role, std::vector<Item>& bag, const std::vector<Item>& s
         role.studyBoostDays += 2;
         break;
     case 3:
-        role.money += 260;
+        AddMoney(role, 260);
         role.energy -= 20;
         AddMood(role, -6);
         role.health -= 3;
         break;
     case 4:
         AddMood(role, 26);
-        role.health += 10;
-        role.money -= 150;
+        AddHealth(role, 10);
+        AddMoney(role, -150);
         role.moodGuardDays += 3;
         break;
     case 5:
         EnterShop(role, bag, shopItems);
+        break;
+    case 6:
+        AddHealth(role, 22);
+        AddMood(role, 16);
+        role.energy -= 12;
+        role.studyBoostDays += 1;
+        std::cout << "崂山徒步呼吸山海空气，灵感闪现。\n";
         break;
     default:
         std::cout << "你决定宅在宿舍，什么也没做。\n";
@@ -398,9 +573,10 @@ void RunWeekend(Person& role, std::vector<Item>& bag, const std::vector<Item>& s
 }
 
 void RunTimeSlot(Person& role, std::vector<Item>& bag, const std::vector<Action>& actions,
-                 const std::string& slotName) {
+                 std::vector<Course>& courses, const std::string& slotName) {
     std::cout << "\n=== " << slotName << " ===\n";
     ShowStatus(role);
+    ShowCourseStatus(courses);
     std::cout << "选择行动：\n";
     for (size_t i = 0; i < actions.size(); ++i) {
         std::cout << i + 1 << ". " << actions[i].name << " —— " << actions[i].description << "\n";
@@ -410,7 +586,7 @@ void RunTimeSlot(Person& role, std::vector<Item>& bag, const std::vector<Action>
     std::cout << "请输入选项：";
     int choice = SafeReadInt();
     if (choice >= 1 && static_cast<size_t>(choice) <= actions.size()) {
-        actions[choice - 1].execute(role, bag);
+        actions[choice - 1].execute(role, bag, courses);
     } else if (choice == static_cast<int>(actions.size()) + 1) {
         UseItem(role, bag);
     } else if (choice == static_cast<int>(actions.size()) + 2) {
@@ -438,6 +614,114 @@ void CheckScholarship(Person& role, std::vector<std::string>& achievements) {
     }
 }
 
+// 中文注释：月度考核，提供目标导向的奖励与惩罚
+void CheckMonthlyAssessment(Person& role) {
+    if (role.day % 14 != 0) return;
+    const int target = 140 + (role.day / 14) * 20;
+    std::cout << "月度考核：需要学识达到 " << target << "。\n";
+    if (role.knowledge >= target) {
+        std::cout << "考核通过，获得导师认可（心情+12，精力+6）。\n";
+        AddMood(role, 12);
+        role.energy += 6;
+        role.studyBoostDays += 1;
+    } else {
+        std::cout << "考核未达标，导师提醒你抓紧复习（心情-10，精力-6）。\n";
+        AddMood(role, -10);
+        role.energy -= 6;
+    }
+    ClampCoreStats(role);
+}
+
+// 中文注释：每日结束的连击奖励
+void HandleStudyStreak(Person& role) {
+    if (role.studiedToday) {
+        role.studyStreak++;
+    } else {
+        role.studyStreak = 0;
+    }
+    if (role.studyStreak > 0 && role.studyStreak % 3 == 0) {
+        std::cout << "连续学习满 " << role.studyStreak << " 天，触发心流！学识获取额外提升，心情+6。\n";
+        role.studyBoostDays += 2;
+        AddMood(role, 6);
+    }
+    role.studiedToday = false;
+    ClampCoreStats(role);
+}
+
+// 中文注释：每日睡眠恢复，减缓纯学习导致的过早结局
+void SleepRecovery(Person& role) {
+    std::cout << "夜晚睡眠恢复：精力+14，健康+4，心情+3。\n";
+    role.energy += 14;
+    role.health += 4;
+    AddMood(role, 3);
+    ClampCoreStats(role);
+}
+
+// 中文注释：小游戏——海风剪刀石头布
+void PlayRockPaperScissors(Person& role) {
+    std::cout << "\n【小游戏】栈桥海风剪刀石头布（赢：心情+12 金钱+30，平：心情+4，输：心情-6）\n";
+    std::cout << "请选择：0=石头 1=剪刀 2=布：";
+    int user = SafeReadInt();
+    if (user < 0 || user > 2) {
+        std::cout << "无效选择，小游戏取消。\n";
+        return;
+    }
+    int ai = RandomInt(0, 2);
+    std::cout << "你出 " << (user == 0 ? "石头" : user == 1 ? "剪刀" : "布")
+              << "，对手出 " << (ai == 0 ? "石头" : ai == 1 ? "剪刀" : "布") << "。\n";
+    if (user == ai) {
+        std::cout << "平局！心情+4。\n";
+        AddMood(role, 4);
+    } else if ((user == 0 && ai == 1) || (user == 1 && ai == 2) || (user == 2 && ai == 0)) {
+        std::cout << "你赢了！海风吹得舒服，赚到路费。\n";
+        AddMood(role, 12);
+        AddMoney(role, 30);
+    } else {
+        std::cout << "输了一把，下次再战。心情-6。\n";
+        AddMood(role, -6);
+    }
+    role.energy -= 2;
+    ClampCoreStats(role);
+}
+
+// 中文注释：小游戏——青岛课堂快问答
+void PlayQuickQuiz(Person& role) {
+    std::cout << "\n【小游戏】课堂快问答（答对：学识+18 心情+6，答错：心情-4）\n";
+    int a = RandomInt(5, 15);
+    int b = RandomInt(3, 12);
+    int answer = a + b;
+    std::cout << "问题：青岛工科课堂突击测试，" << a << " + " << b << " = ? 请输入答案：";
+    int user = SafeReadInt();
+    if (user == answer) {
+        std::cout << "答对了！老师夸奖你反应快。\n";
+        AddKnowledge(role, 18);
+        AddMood(role, 6);
+    } else {
+        std::cout << "答错了，正确答案是 " << answer << "。下次注意！\n";
+        AddMood(role, -4);
+    }
+    role.energy -= 3;
+    ClampCoreStats(role);
+}
+
+// 中文注释：根据条件触发可选小游戏
+void MaybeLaunchMiniGame(Person& role) {
+    if (role.mood >= 80 && role.energy >= 35) {
+        std::cout << "\n是否在栈桥来一局剪刀石头布放松？(1 是 / 0 否)：";
+        int choose = SafeReadInt();
+        if (choose == 1) {
+            PlayRockPaperScissors(role);
+        }
+    }
+    if (role.knowledge >= 150 && role.energy >= 20) {
+        std::cout << "参加课堂快问答提升手速？(1 是 / 0 否)：";
+        int choose = SafeReadInt();
+        if (choose == 1) {
+            PlayQuickQuiz(role);
+        }
+    }
+}
+
 int main() {
     Person role;
     role.age = RandomInt(20, 22);
@@ -449,6 +733,8 @@ int main() {
 
     std::vector<Item> bag;
     std::vector<std::string> achievements;
+    std::vector<Course> courses;
+    InitCourses(courses);
 
     const std::vector<Item> shopItems{
         {"咖啡", "恢复15精力，但心情-2", 40, [](Person& p) {
@@ -472,6 +758,43 @@ int main() {
              AddKnowledge(p, 100);
              AddMood(p, 10);
          }},
+        {"室友喊你去五四广场看灯光秀，一路吹海风。心情+14，精力+4。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMood(p, 14);
+             p.energy += 4;
+         }},
+        {"黄岛亲海跑步，海风咸咸的，肺部舒畅。健康+12，心情+8，精力-4。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddHealth(p, 12);
+             AddMood(p, 8);
+             p.energy -= 4;
+         }},
+        {"青岛啤酒节兼职拉啤酒，赚到不少外快。金钱+220，精力-14，心情+6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMoney(p, 220);
+             p.energy -= 14;
+             AddMood(p, 6);
+         }},
+        {"老师带队去八大关采风，拍照画画收获满满。心情+12，学识+6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMood(p, 12);
+             AddKnowledge(p, 6);
+         }},
+        {"与同学去台东夜市撸串，吃到海鲜烤鱿鱼。心情+10，金钱-40。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMood(p, 10);
+             AddMoney(p, -40);
+         }},
+        {"崂山脚下偶遇山泉水摊贩，喝完感觉体力恢复。健康+6，精力+10。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddHealth(p, 6);
+             p.energy += 10;
+         }},
+        {"栈桥看日落走神，作业忘交被老师点名。学识-8，心情-6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddKnowledge(p, -8);
+             AddMood(p, -6);
+         }},
         {"上班时间摸鱼打游戏被军哥发现，军哥说：“没事儿你先玩！”，你羞愧不已，默默关掉了手机。",
          [](const Person&) { return true; }, [](Person& p) { AddMood(p, -2); }},
         {"向英子请教学术问题，耗时一上午，她说：“你回去再研究研究，研究明白了给我讲讲；还有个表格辛苦你加加班”，心情-20。",
@@ -483,7 +806,7 @@ int main() {
         {"鉴定前期，小孙恬不知耻地克扣大家休息时间，还大言不惭地说道：“我们是一个team！”（心情-5）",
          [](const Person&) { return true; }, [](Person& p) { AddMood(p, -5); }},
         {"大老项陪完酒一瘸一拐地跑回来查人，发现一片混乱朝小孙怒吼：“XXX你能干干，不能干滚！”第二天全组喜提扣一个月工资。金钱-800！",
-         [](const Person&) { return true; }, [](Person& p) { p.money -= 800; }},
+         [](const Person&) { return true; }, [](Person& p) { AddMoney(p, -800); }},
         {"实验灵感突现，导师表扬你。学识+25，心情+10。", [](const Person&) { return true; },
          [](Person& p) {
              AddKnowledge(p, 25);
@@ -497,18 +820,29 @@ int main() {
         {"室友请你喝奶茶，心情+12，金钱-10。", [](const Person&) { return true; },
          [](Person& p) {
              AddMood(p, 12);
-             p.money -= 10;
+             AddMoney(p, -10);
          }},
         {"临时助研机会，学识+15，金钱+80，精力-10。", [](const Person& p) { return p.energy > 15; },
          [](Person& p) {
              AddKnowledge(p, 15);
-             p.money += 80;
+             AddMoney(p, 80);
              p.energy -= 10;
          }},
         {"发烧在宿舍躺了一天。健康-18，精力-8。", [](const Person& p) { return p.health < 60; },
          [](Person& p) {
              p.health -= 18;
              p.energy -= 8;
+         }},
+        {"海大联谊活动邀请你做志愿者，心情+10，学识+6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddMood(p, 10);
+             AddKnowledge(p, 6);
+         }},
+        {"学校组织参观青岛国际啤酒博物馆，学识+8，心情+12，金钱-30。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddKnowledge(p, 8);
+             AddMood(p, 12);
+             AddMoney(p, -30);
          }},
         {"参加校级比赛获奖，学识+20，心情+16。", [](const Person& p) { return p.knowledge > 120; },
          [](Person& p) {
@@ -517,7 +851,7 @@ int main() {
          }},
         {"帮同学解题收到红包，金钱+60，心情+6。", [](const Person& p) { return p.knowledge > 90; },
          [](Person& p) {
-             p.money += 60;
+             AddMoney(p, 60);
              AddMood(p, 6);
          }},
         {"沉迷短视频耗费时间，心情+4，精力-8，学识-6。", [](const Person&) { return true; },
@@ -545,39 +879,70 @@ int main() {
     };
 
     const std::vector<Action> actions{
-        {"图书馆冲刺", "学识+15，精力-10，心情-3", [](Person& p, std::vector<Item>&) {
+        {"图书馆冲刺", "学识+15，精力-7，心情-2", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
              AddKnowledge(p, 15);
-             p.energy -= 10;
-             AddMood(p, -3);
+             p.energy -= 7;
+             AddMood(p, -2);
          }},
-        {"午休+冥想", "精力+16，心情+8", [](Person& p, std::vector<Item>&) {
+        {"午休+冥想", "精力+16，心情+8", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
              p.energy += 16;
              AddMood(p, 8);
          }},
-        {"校园跑步", "健康+12，精力-8，心情+4", [](Person& p, std::vector<Item>&) {
-             p.health += 12;
-             p.energy -= 8;
+        {"校园跑步", "健康+12，精力-7，心情+4", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
+             AddHealth(p, 12);
+             p.energy -= 7;
              AddMood(p, 4);
          }},
-        {"社交放松", "心情+15，金钱-20，精力+4", [](Person& p, std::vector<Item>&) {
+        {"海边夜跑", "海风加持，健康+10，心情+10，精力-6", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
+             AddHealth(p, 10);
+             AddMood(p, 10);
+             p.energy -= 6;
+         }},
+        {"社交放松", "心情+15，金钱-20，精力+4", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
              AddMood(p, 15);
-             p.money -= 20;
+             AddMoney(p, -20);
              p.energy += 4;
          }},
-        {"兼职班", "金钱+90，精力-12，心情-4", [](Person& p, std::vector<Item>&) {
-             p.money += 90;
-             p.energy -= 12;
+        {"兼职班", "金钱+90，精力-10，心情-4", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
+             AddMoney(p, 90);
+             p.energy -= 10;
              AddMood(p, -4);
          }},
-        {"自习+项目", "学识+10，金钱+25，精力-9", [](Person& p, std::vector<Item>&) {
+        {"自习+项目", "学识+10，金钱+25，精力-8", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
              AddKnowledge(p, 10);
-             p.money += 25;
-             p.energy -= 9;
+             AddMoney(p, 25);
+             p.energy -= 8;
          }},
-        {"健康餐备餐", "健康+8，金钱-10，心情+3", [](Person& p, std::vector<Item>&) {
-             p.health += 8;
-             p.money -= 10;
+        {"课程研讨", "学识+12，课程进度+14，精力-6", [](Person& p, std::vector<Item>&, std::vector<Course>& courses) {
+             AttendCourse(p, courses, 14);
+         }},
+        {"健康餐备餐", "健康+8，金钱-10，心情+3", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
+             AddHealth(p, 8);
+             AddMoney(p, -10);
              AddMood(p, 3);
+         }},
+        {"海鲜市场采购", "学习砍价，心情+6，金钱-30，学识+4", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
+             AddMood(p, 6);
+             AddMoney(p, -30);
+             AddKnowledge(p, 4);
+         }},
+        {"校园探索", "随机发现物资/灵感/好友", [](Person& p, std::vector<Item>&, std::vector<Course>&) {
+             int r = RandomInt(1, 4);
+             if (r == 1) {
+                 AddMoney(p, 40);
+                 std::cout << "你在草坪边捡到校友送的咖啡券，金钱+40。\n";
+             } else if (r == 2) {
+                 AddHealth(p, 6);
+                 AddMood(p, 4);
+                 std::cout << "你在操场吹风，身心放松，健康+6，心情+4。\n";
+             } else if (r == 3) {
+                 AddKnowledge(p, 8);
+                 std::cout << "偶遇学长分享研究心得，学识+8。\n";
+             } else {
+                 AddMood(p, -3);
+                 p.energy -= 4;
+                 std::cout << "探索太久有点累，精力-4，心情-3。\n";
+             }
          }},
     };
 
@@ -587,12 +952,16 @@ int main() {
         std::cout << "看清真相，起始资金 +800。\n";
         role.money += 800;
     }
+    ChooseDifficulty(role);
 
     const std::vector<std::string> slots{"早晨", "中午", "下午", "傍晚", "深夜"};
 
     while (role.keepPlaying) {
+        RunDailyLecture(role, courses);
+        EnforceRestIfNeeded(role);
+        ChooseDailyPlan(role);
         for (const auto& slot : slots) {
-            RunTimeSlot(role, bag, actions, slot);
+            RunTimeSlot(role, bag, actions, courses, slot);
             EvaluateAchievements(role, achievements);
             TriggerRandomEvent(role, randomEvents);
             CheckEnding(role, achievements);
@@ -623,12 +992,14 @@ int main() {
         if (viewAch == 1) {
             ShowAchievements(achievements);
         }
+        MaybeLaunchMiniGame(role);
 
         // 每日收尾，基础消耗与成长
+        SleepRecovery(role);
         role.day++;
         role.semesterDay++;
-        role.energy -= 6;
-        AddMood(role, -2);
+        role.energy -= role.energyDecay;
+        AddMood(role, -role.moodDecay);
         if (role.day % 30 == 0) {
             role.age++;
             std::cout << "时间流逝，你的年龄来到 " << role.age << " 岁。\n";
@@ -638,6 +1009,8 @@ int main() {
             std::cout << "新学期开始，重置学期计数。\n";
         }
         CheckScholarship(role, achievements);
+        CheckMonthlyAssessment(role);
+        HandleStudyStreak(role);
         ClampCoreStats(role);
         CheckEnding(role, achievements);
     }
