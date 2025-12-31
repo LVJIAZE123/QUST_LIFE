@@ -14,11 +14,14 @@ struct Person {
     std::string name;
     int age = 20;
     int day = 1;
+    int semesterDay = 1;
     int knowledge = 0;
     int health = 0;
     int energy = 0;
     int mood = 0;
     int money = 0;
+    int studyBoostDays = 0;     // 学习增益天数
+    int moodGuardDays = 0;      // 心情保护天数
     bool keepPlaying = true;
     bool success = false;
 };
@@ -57,6 +60,27 @@ void PauseShort() {
     std::this_thread::sleep_for(std::chrono::milliseconds(160));
 }
 
+// 中文注释：安全的数值加减，避免心情保护或溢出问题
+void AddMood(Person& role, int delta) {
+    int realDelta = delta;
+    if (delta < 0 && role.moodGuardDays > 0) {
+        // 心情保护降低负面影响
+        realDelta = delta / 2;
+        role.moodGuardDays--;
+    }
+    role.mood += realDelta;
+}
+
+void AddKnowledge(Person& role, int baseDelta, int extraEnergyCost = 0) {
+    int delta = baseDelta;
+    if (role.studyBoostDays > 0) {
+        delta += 6;
+        role.studyBoostDays--;
+    }
+    role.knowledge += delta;
+    role.energy -= extraEnergyCost;
+}
+
 int SafeReadInt() {
     int value;
     while (!(std::cin >> value)) {
@@ -81,7 +105,7 @@ void ClampCoreStats(Person& role) {
 
 void ShowStatus(const Person& role) {
     std::cout << "-----------------------------\n";
-    std::cout << "第 " << role.day << " 天 | 年龄: " << role.age << "\n";
+    std::cout << "第 " << role.day << " 天 (学期内第 " << role.semesterDay << " 天) | 年龄: " << role.age << "\n";
     std::cout << "姓名: " << role.name << "\n";
     std::cout << "学识: " << role.knowledge << "  健康: " << role.health << "  精力: " << role.energy
               << "  心情: " << role.mood << "  金钱: " << role.money << "\n";
@@ -183,7 +207,7 @@ void CheckDailyDecay(Person& role) {
     }
     if (role.money < 0) {
         std::cout << "负债压力让你心情 -5。\n";
-        role.mood -= 5;
+        AddMood(role, -5);
     }
     ClampCoreStats(role);
 }
@@ -261,13 +285,13 @@ void PlayTask(Person& role) {
         std::cout << "3. 另择他日（无变化）\n";
         const int c = SafeReadInt();
         if (c == 1) {
-            role.knowledge += 30;
+            AddKnowledge(role, 30);
             role.energy -= 18;
-            role.mood -= 6;
+            AddMood(role, -6);
         } else if (c == 2) {
-            role.knowledge += 18;
+            AddKnowledge(role, 18);
             role.energy -= 10;
-            role.mood -= 2;
+            AddMood(role, -2);
         } else {
             std::cout << "你选择保持节奏，任务留到以后。\n";
         }
@@ -280,13 +304,13 @@ void PlayTask(Person& role) {
         if (c == 1) {
             role.health += 25;
             role.energy -= 12;
-            role.mood += 3;
+            AddMood(role, 3);
         } else if (c == 2) {
             role.health += 12;
             role.energy -= 6;
-            role.mood += 8;
+            AddMood(role, 8);
         } else {
-            role.mood -= 2;
+            AddMood(role, -2);
             std::cout << "教练有些失望。\n";
         }
     } else if (taskType == 3) {
@@ -296,12 +320,12 @@ void PlayTask(Person& role) {
         std::cout << "3. 不参与（无变化）\n";
         const int c = SafeReadInt();
         if (c == 1) {
-            role.mood += 18;
-            role.knowledge += 8;
+            AddMood(role, 18);
+            AddKnowledge(role, 8);
             role.energy -= 10;
         } else if (c == 2) {
-            role.mood += 10;
-            role.knowledge += 4;
+            AddMood(role, 10);
+            AddKnowledge(role, 4);
             role.energy -= 4;
         } else {
             std::cout << "你决定把时间留给自己。\n";
@@ -315,15 +339,60 @@ void PlayTask(Person& role) {
         if (c == 1) {
             role.money += 160;
             role.energy -= 16;
-            role.mood -= 6;
+            AddMood(role, -6);
             role.health -= 2;
         } else if (c == 2) {
             role.money += 90;
             role.energy -= 9;
-            role.mood -= 2;
+            AddMood(role, -2);
         } else {
             std::cout << "你婉拒了这次班次。\n";
         }
+    }
+    ClampCoreStats(role);
+}
+
+// 中文注释：周末安排，提供额外成长与增益
+void RunWeekend(Person& role, std::vector<Item>& bag, const std::vector<Item>& shopItems) {
+    std::cout << "\n—— 周末来临，你可以自由安排 ——\n";
+    std::cout << "1. 深度休息（健康+15 精力+22 心情+12）\n";
+    std::cout << "2. 集中复习（学识+40 精力-14 心情-4，获得2天学习增益）\n";
+    std::cout << "3. 兼职冲刺（金钱+260 精力-20 心情-6 健康-3）\n";
+    std::cout << "4. 团建旅行（心情+26 健康+10 金钱-150，获得3天心情保护）\n";
+    std::cout << "5. 周末逛店（直接进入小卖部）\n";
+    std::cout << "请选择：";
+    const int choice = SafeReadInt();
+    switch (choice) {
+    case 1:
+        role.health += 15;
+        role.energy += 22;
+        AddMood(role, 12);
+        break;
+    case 2:
+        AddKnowledge(role, 40);
+        role.energy -= 14;
+        AddMood(role, -4);
+        role.studyBoostDays += 2;
+        break;
+    case 3:
+        role.money += 260;
+        role.energy -= 20;
+        AddMood(role, -6);
+        role.health -= 3;
+        break;
+    case 4:
+        AddMood(role, 26);
+        role.health += 10;
+        role.money -= 150;
+        role.moodGuardDays += 3;
+        break;
+    case 5:
+        EnterShop(role, bag, shopItems);
+        break;
+    default:
+        std::cout << "你决定宅在宿舍，什么也没做。\n";
+        AddMood(role, -1);
+        break;
     }
     ClampCoreStats(role);
 }
@@ -348,12 +417,26 @@ void RunTimeSlot(Person& role, std::vector<Item>& bag, const std::vector<Action>
         std::cout << "该选项将在每日结束时统一进入商店。\n";
     } else {
         std::cout << "无效选择，时间被浪费。\n";
-        role.mood -= 2;
+        AddMood(role, -2);
     }
     ClampCoreStats(role);
 }
 
 }  // namespace
+
+// 中文注释：奖学金/补助检测
+void CheckScholarship(Person& role, std::vector<std::string>& achievements) {
+    if (role.knowledge >= 200 && role.mood >= 40 && role.day % 14 == 0) {
+        const int grant = RandomInt(180, 380);
+        std::cout << "你因学习表现获得奖学金 +" << grant << "！\n";
+        role.money += grant;
+        UnlockAchievement(achievements, "奖学金获得者");
+    }
+    if (role.health >= 110 && role.day % 10 == 0) {
+        std::cout << "坚持锻炼让你状态良好，获得教练鼓励（心情+8）。\n";
+        AddMood(role, 8);
+    }
+}
 
 int main() {
     Person role;
@@ -368,32 +451,57 @@ int main() {
     std::vector<std::string> achievements;
 
     const std::vector<Item> shopItems{
-        {"咖啡", "恢复15精力，但心情-2", 40, [](Person& p) { p.energy += 15, p.mood -= 2; }},
+        {"咖啡", "恢复15精力，但心情-2", 40, [](Person& p) {
+             p.energy += 15;
+             AddMood(p, -2);
+         }},
         {"维生素", "恢复12健康", 50, [](Person& p) { p.health += 12; }},
-        {"速记手册", "学识+18，精力-5", 65, [](Person& p) { p.knowledge += 18, p.energy -= 5; }},
-        {"音乐耳机", "心情+18", 80, [](Person& p) { p.mood += 18; }},
+        {"速记手册", "学识+18，精力-5", 65, [](Person& p) {
+             AddKnowledge(p, 18);
+             p.energy -= 5;
+         }},
+        {"音乐耳机", "心情+18", 80, [](Person& p) { AddMood(p, 18); }},
         {"能量棒礼包", "精力+25，健康-3", 95, [](Person& p) { p.energy += 25, p.health -= 3; }},
     };
 
     const std::vector<RandomEvent> randomEvents{
+        {"早上起晚撞上熬了大夜的僵尸老滕，给了他两拳，一想到他成天虐待小哲又补了两脚嘿嘿嘿。心情+10。",
+         [](const Person&) { return true; }, [](Person& p) { AddMood(p, 10); }},
+        {"你正在为写不出论文而发愁，莉莉说带你发顶刊，你激动地认她做干妈！学识+100，心情+10。",
+         [](const Person&) { return true; }, [](Person& p) {
+             AddKnowledge(p, 100);
+             AddMood(p, 10);
+         }},
+        {"上班时间摸鱼打游戏被军哥发现，军哥说：“没事儿你先玩！”，你羞愧不已，默默关掉了手机。",
+         [](const Person&) { return true; }, [](Person& p) { AddMood(p, -2); }},
+        {"向英子请教学术问题，耗时一上午，她说：“你回去再研究研究，研究明白了给我讲讲；还有个表格辛苦你加加班”，心情-20。",
+         [](const Person&) { return true; }, [](Person& p) { AddMood(p, -20); }},
+        {"放假前夕，桃从办公室进进出出，焦急地问：“哎呀我靠，你们什么时候放假？”（无直接影响）",
+         [](const Person&) { return true; }, [](Person&) {}},
+        {"大力值班巡查时：“你们屋学习氛围真浓厚，咱们组真的是蒸蒸日上！”（无直接影响）",
+         [](const Person&) { return true; }, [](Person&) {}},
+        {"鉴定前期，小孙恬不知耻地克扣大家休息时间，还大言不惭地说道：“我们是一个team！”（心情-5）",
+         [](const Person&) { return true; }, [](Person& p) { AddMood(p, -5); }},
+        {"大老项陪完酒一瘸一拐地跑回来查人，发现一片混乱朝小孙怒吼：“XXX你能干干，不能干滚！”第二天全组喜提扣一个月工资。金钱-800！",
+         [](const Person&) { return true; }, [](Person& p) { p.money -= 800; }},
         {"实验灵感突现，导师表扬你。学识+25，心情+10。", [](const Person&) { return true; },
          [](Person& p) {
-             p.knowledge += 25;
-             p.mood += 10;
+             AddKnowledge(p, 25);
+             AddMood(p, 10);
          }},
         {"夜跑摔了一跤。健康-12，心情-4。", [](const Person& p) { return p.health > 40; },
          [](Person& p) {
              p.health -= 12;
-             p.mood -= 4;
+             AddMood(p, -4);
          }},
         {"室友请你喝奶茶，心情+12，金钱-10。", [](const Person&) { return true; },
          [](Person& p) {
-             p.mood += 12;
+             AddMood(p, 12);
              p.money -= 10;
          }},
         {"临时助研机会，学识+15，金钱+80，精力-10。", [](const Person& p) { return p.energy > 15; },
          [](Person& p) {
-             p.knowledge += 15;
+             AddKnowledge(p, 15);
              p.money += 80;
              p.energy -= 10;
          }},
@@ -404,58 +512,72 @@ int main() {
          }},
         {"参加校级比赛获奖，学识+20，心情+16。", [](const Person& p) { return p.knowledge > 120; },
          [](Person& p) {
-             p.knowledge += 20;
-             p.mood += 16;
+             AddKnowledge(p, 20);
+             AddMood(p, 16);
          }},
         {"帮同学解题收到红包，金钱+60，心情+6。", [](const Person& p) { return p.knowledge > 90; },
          [](Person& p) {
              p.money += 60;
-             p.mood += 6;
+             AddMood(p, 6);
          }},
         {"沉迷短视频耗费时间，心情+4，精力-8，学识-6。", [](const Person&) { return true; },
          [](Person& p) {
-             p.mood += 4;
+             AddMood(p, 4);
              p.energy -= 8;
              p.knowledge -= 6;
          }},
         {"主动组织团建，心情+14，获得人脉。", [](const Person& p) { return p.mood > 60; },
-         [](Person& p) { p.mood += 14; }},
+         [](Person& p) { AddMood(p, 14); }},
+        {"科研心流降临，未来三天学习效率提升！", [](const Person& p) { return p.knowledge > 80; },
+         [](Person& p) { p.studyBoostDays += 3; }},
+        {"心理辅导课让你学会调节，获得2天心情保护。", [](const Person& p) { return p.mood < 50; },
+         [](Person& p) { p.moodGuardDays += 2; AddMood(p, 6); }},
+        {"返校核酸排队一整天，精力-6，心情-4。", [](const Person&) { return true; },
+         [](Person& p) {
+             p.energy -= 6;
+             AddMood(p, -4);
+         }},
+        {"系主任偶遇你，鼓励你申请项目，学识+12，心情+6。", [](const Person&) { return true; },
+         [](Person& p) {
+             AddKnowledge(p, 12);
+             AddMood(p, 6);
+         }},
     };
 
     const std::vector<Action> actions{
         {"图书馆冲刺", "学识+15，精力-10，心情-3", [](Person& p, std::vector<Item>&) {
-             p.knowledge += 15;
+             AddKnowledge(p, 15);
              p.energy -= 10;
-             p.mood -= 3;
+             AddMood(p, -3);
          }},
         {"午休+冥想", "精力+16，心情+8", [](Person& p, std::vector<Item>&) {
              p.energy += 16;
-             p.mood += 8;
+             AddMood(p, 8);
          }},
         {"校园跑步", "健康+12，精力-8，心情+4", [](Person& p, std::vector<Item>&) {
              p.health += 12;
              p.energy -= 8;
-             p.mood += 4;
+             AddMood(p, 4);
          }},
         {"社交放松", "心情+15，金钱-20，精力+4", [](Person& p, std::vector<Item>&) {
-             p.mood += 15;
+             AddMood(p, 15);
              p.money -= 20;
              p.energy += 4;
          }},
         {"兼职班", "金钱+90，精力-12，心情-4", [](Person& p, std::vector<Item>&) {
              p.money += 90;
              p.energy -= 12;
-             p.mood -= 4;
+             AddMood(p, -4);
          }},
         {"自习+项目", "学识+10，金钱+25，精力-9", [](Person& p, std::vector<Item>&) {
-             p.knowledge += 10;
+             AddKnowledge(p, 10);
              p.money += 25;
              p.energy -= 9;
          }},
         {"健康餐备餐", "健康+8，金钱-10，心情+3", [](Person& p, std::vector<Item>&) {
              p.health += 8;
              p.money -= 10;
-             p.mood += 3;
+             AddMood(p, 3);
          }},
     };
 
@@ -484,6 +606,12 @@ int main() {
         CheckEnding(role, achievements);
         if (!role.keepPlaying) break;
 
+        if (role.semesterDay % 7 == 0) {
+            RunWeekend(role, bag, shopItems);
+            CheckEnding(role, achievements);
+            if (!role.keepPlaying) break;
+        }
+
         std::cout << "是否在一天结束时进入小卖部？(1 是 / 0 否)：";
         const int enterShop = SafeReadInt();
         if (enterShop == 1) {
@@ -498,12 +626,18 @@ int main() {
 
         // 每日收尾，基础消耗与成长
         role.day++;
+        role.semesterDay++;
         role.energy -= 6;
-        role.mood -= 2;
+        AddMood(role, -2);
         if (role.day % 30 == 0) {
             role.age++;
             std::cout << "时间流逝，你的年龄来到 " << role.age << " 岁。\n";
         }
+        if (role.semesterDay > 120) {
+            role.semesterDay = 1;
+            std::cout << "新学期开始，重置学期计数。\n";
+        }
+        CheckScholarship(role, achievements);
         ClampCoreStats(role);
         CheckEnding(role, achievements);
     }
