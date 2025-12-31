@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -21,23 +20,11 @@ struct Person {
     int energy = 0;
     int mood = 0;
     int money = 0;
-    // 中文注释：日常增益和状态
-    double studyFactor = 1.0;
-    double healthFactor = 1.0;
-    double moodFactor = 1.0;
-    double moneyFactor = 1.0;
     int studyBoostDays = 0;     // 学习增益天数
     int moodGuardDays = 0;      // 心情保护天数
-    int studyStreak = 0;        // 连续学习日
-    bool studiedToday = false;  // 今日是否学习
-    int energyDecay = 6;        // 难度影响的每日精力消耗
-    int moodDecay = 2;          // 难度影响的每日心情消耗
-    std::string planName = "自由日常";
     bool keepPlaying = true;
     bool success = false;
 };
-
-struct Course;
 
 struct Item {
     std::string name;
@@ -49,29 +36,13 @@ struct Item {
 struct Action {
     std::string name;
     std::string description;
-    std::function<void(Person&, std::vector<Item>&, std::vector<Course>&)> execute;
+    std::function<void(Person&, std::vector<Item>&)> execute;
 };
 
 struct RandomEvent {
     std::string description;
     std::function<bool(const Person&)> condition;
     std::function<void(Person&)> effect;
-};
-
-struct DailyPlan {
-    std::string name;
-    double studyFactor = 1.0;
-    double healthFactor = 1.0;
-    double moodFactor = 1.0;
-    double moneyFactor = 1.0;
-    int energyOffset = 0;
-};
-
-struct Course {
-    std::string name;
-    int progress = 0;   // 0-100
-    int difficulty = 80;
-    bool finished = false;
 };
 
 namespace {
