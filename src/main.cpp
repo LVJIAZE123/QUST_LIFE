@@ -686,6 +686,71 @@ void SleepRecovery(Person& role) {
     ClampCoreStats(role);
 }
 
+// 中文注释：小游戏——海风剪刀石头布
+void PlayRockPaperScissors(Person& role) {
+    std::cout << "\n【小游戏】栈桥海风剪刀石头布（赢：心情+12 金钱+30，平：心情+4，输：心情-6）\n";
+    std::cout << "请选择：0=石头 1=剪刀 2=布：";
+    int user = SafeReadInt();
+    if (user < 0 || user > 2) {
+        std::cout << "无效选择，小游戏取消。\n";
+        return;
+    }
+    int ai = RandomInt(0, 2);
+    std::cout << "你出 " << (user == 0 ? "石头" : user == 1 ? "剪刀" : "布")
+              << "，对手出 " << (ai == 0 ? "石头" : ai == 1 ? "剪刀" : "布") << "。\n";
+    if (user == ai) {
+        std::cout << "平局！心情+4。\n";
+        AddMood(role, 4);
+    } else if ((user == 0 && ai == 1) || (user == 1 && ai == 2) || (user == 2 && ai == 0)) {
+        std::cout << "你赢了！海风吹得舒服，赚到路费。\n";
+        AddMood(role, 12);
+        AddMoney(role, 30);
+    } else {
+        std::cout << "输了一把，下次再战。心情-6。\n";
+        AddMood(role, -6);
+    }
+    role.energy -= 2;
+    ClampCoreStats(role);
+}
+
+// 中文注释：小游戏——青岛课堂快问答
+void PlayQuickQuiz(Person& role) {
+    std::cout << "\n【小游戏】课堂快问答（答对：学识+18 心情+6，答错：心情-4）\n";
+    int a = RandomInt(5, 15);
+    int b = RandomInt(3, 12);
+    int answer = a + b;
+    std::cout << "问题：青岛工科课堂突击测试，" << a << " + " << b << " = ? 请输入答案：";
+    int user = SafeReadInt();
+    if (user == answer) {
+        std::cout << "答对了！老师夸奖你反应快。\n";
+        AddKnowledge(role, 18);
+        AddMood(role, 6);
+    } else {
+        std::cout << "答错了，正确答案是 " << answer << "。下次注意！\n";
+        AddMood(role, -4);
+    }
+    role.energy -= 3;
+    ClampCoreStats(role);
+}
+
+// 中文注释：根据条件触发可选小游戏
+void MaybeLaunchMiniGame(Person& role) {
+    if (role.mood >= 80 && role.energy >= 35) {
+        std::cout << "\n是否在栈桥来一局剪刀石头布放松？(1 是 / 0 否)：";
+        int choose = SafeReadInt();
+        if (choose == 1) {
+            PlayRockPaperScissors(role);
+        }
+    }
+    if (role.knowledge >= 150 && role.energy >= 20) {
+        std::cout << "参加课堂快问答提升手速？(1 是 / 0 否)：";
+        int choose = SafeReadInt();
+        if (choose == 1) {
+            PlayQuickQuiz(role);
+        }
+    }
+}
+
 int main() {
     Person role;
     role.age = RandomInt(20, 22);
@@ -956,6 +1021,7 @@ int main() {
         if (viewAch == 1) {
             ShowAchievements(achievements);
         }
+        MaybeLaunchMiniGame(role);
 
         // 每日收尾，基础消耗与成长
         SleepRecovery(role);
